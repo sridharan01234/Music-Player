@@ -1,3 +1,5 @@
+name: Deploy
+
 on:
   push:
     branches:
@@ -20,11 +22,12 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-      - name: Create SSH key file
-        run: |
-          mkdir -p ~/.ssh
-          printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+      - name: Set up SSH
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          name: id_rsa
+          known_hosts: ${{ secrets.KNOWN_HOSTS }}
 
       - name: Upload .env file
         run: scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no .env ubuntu@3.84.163.54:/var/www/html/.env
@@ -36,10 +39,8 @@ jobs:
           EC2_HOST: 3.84.163.54
           EC2_PATH: /var/www/html
         run: |
-          echo "$SSH_PRIVATE_KEY" > private_key
-          chmod 600 private_key
-          rsync -avz -e "ssh -i private_key -o StrictHostKeyChecking=no" --exclude=".git" --exclude="vendor" ./ $EC2_USER@$EC2_HOST:$EC2_PATH
-          ssh -i private_key -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "cd $EC2_PATH && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader && php artisan migrate --force && php artisan config:cache && php artisan route:cache && php artisan view:cache"
+          rsync -avz -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" --exclude=".git" --exclude="vendor" ./ $EC2_USER@$EC2_HOST:$EC2_PATH
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "cd $EC2_PATH && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader && php artisan migrate --force && php artisan config:cache && php artisan route:cache && php artisan view:cache"
 
       - name: Upload to S3
         uses: jakejarvis/s3-sync-action@v0.5.1
