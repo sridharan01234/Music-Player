@@ -1,0 +1,48 @@
+name: Deploy Laravel Application
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.0' # Specify your PHP version
+        extensions: mbstring, xml, bcmath, json, curl, gd, mysql
+
+    - name: Install Composer dependencies
+      run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+    - name: Upload .env file
+      run: scp -i ~/.ssh/id_rsa .env ubuntu@3.84.163.54:/var/www/html/.env
+
+    - name: Deploy to EC2
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        EC2_USER: ubuntu
+        EC2_HOST: 3.84.163.54
+        EC2_PATH: /var/www/html
+      run: |
+        echo "$SSH_PRIVATE_KEY" > private_key
+        chmod 600 private_key
+        rsync -avz -e "ssh -i private_key" --exclude=".git" --exclude="vendor" ./ $EC2_USER@$EC2_HOST:$EC2_PATH
+        ssh -i private_key $EC2_USER@$EC2_HOST "cd $EC2_PATH && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader && php artisan migrate --force && php artisan config:cache && php artisan route:cache && php artisan view:cache"
+
+    - name: Upload to S3
+      uses: jakejarvis/s3-sync-action@v0.5.1
+      with:
+        args: --acl public-read --follow-symlinks --delete
+      env:
+        AWS_S3_BUCKET: 'laravel-media-bucket-sri1234'
+        AWS_REGION: 'us-east-1'
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
