@@ -13,20 +13,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.2"
-          extensions: mbstring, xml, bcmath, json, curl, gd, mysql
+      - name: Generate SSH key pair
+        id: generate_key
+        run: |
+          ssh-keygen -t rsa -b 4096 -C "github-actions@your-repo" -f ~/.ssh/id_rsa -N ""
+          echo "::set-output name=private_key::$(cat ~/.ssh/id_rsa)"
+          echo "::set-output name=public_key::$(cat ~/.ssh/id_rsa.pub)"
 
-      - name: Add SSH key
-        uses: webfactory/ssh-agent@v0.5.3
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Display Public Key (for debugging, you can remove this later)
+        run: cat ~/.ssh/id_rsa.pub
+
+      - name: Copy public key to EC2 instance
+        env:
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }} # An existing SSH key to access EC2
+        run: |
+          echo "${{ steps.generate_key.outputs.public_key }}" | ssh -i ~/.ssh/known_ssh_key -o StrictHostKeyChecking=no ubuntu@<EC2_IP> "cat >> ~/.ssh/authorized_keys"
+
+      - name: Add generated SSH key to agent
+        run: |
+          echo "${{ steps.generate_key.outputs.private_key }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          eval $(ssh-agent -s)
+          ssh-add ~/.ssh/id_rsa
 
       - name: Deploy to EC2
         run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@13.60.64.40 << 'EOF'
+          ssh -o StrictHostKeyChecking=no ubuntu@<EC2_IP> << 'EOF'
             cd /var/www/html/your-project
             git pull origin main
             composer install --no-interaction --prefer-dist --optimize-autoloader
