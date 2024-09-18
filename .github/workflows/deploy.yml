@@ -1,4 +1,4 @@
-name: Deploy
+name: Deploy to EC2
 
 on:
   push:
@@ -16,38 +16,23 @@ jobs:
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.3"
+          php-version: "8.2"
           extensions: mbstring, xml, bcmath, json, curl, gd, mysql
 
-      - name: Install Composer dependencies
-        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Set up SSH
-        uses: shimataro/ssh-key-action@v2
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.5.3
         with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          name: id_rsa
-          known_hosts: ${{ secrets.KNOWN_HOSTS }}
-
-      - name: Upload .env file
-        run: scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no .env ubuntu@3.84.163.54:/var/www/html/.env
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Deploy to EC2
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          EC2_USER: ubuntu
-          EC2_HOST: 3.84.163.54
-          EC2_PATH: /var/www/html
         run: |
-          rsync -avz -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" --exclude=".git" --exclude="vendor" ./ $EC2_USER@$EC2_HOST:$EC2_PATH
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "cd $EC2_PATH && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader && php artisan migrate --force && php artisan config:cache && php artisan route:cache && php artisan view:cache"
-
-      - name: Upload to S3
-        uses: jakejarvis/s3-sync-action@v0.5.1
-        with:
-          args: --acl public-read --follow-symlinks --delete
-        env:
-          AWS_S3_BUCKET: "laravel-media-bucket-sri1234"
-          AWS_REGION: "us-east-1"
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          ssh -o StrictHostKeyChecking=no ubuntu@13.60.64.40 << 'EOF'
+            cd /var/www/html/your-project
+            git pull origin main
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            sudo systemctl restart apache2
+          EOF
