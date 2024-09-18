@@ -27,7 +27,7 @@ jobs:
         env:
           EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }} # An existing SSH key to access EC2
         run: |
-          echo "${{ steps.generate_key.outputs.public_key }}" | ssh -i <path-to-existing-key> -o StrictHostKeyChecking=no ubuntu@13.60.64.40 "cat >> ~/.ssh/authorized_keys"
+          echo "${{ steps.generate_key.outputs.public_key }}" | ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@13.60.64.40 "cat >> ~/.ssh/authorized_keys"
 
       - name: Add generated SSH key to agent
         run: |
